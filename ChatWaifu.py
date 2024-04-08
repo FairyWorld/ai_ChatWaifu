@@ -9,6 +9,7 @@ import re
 from torch import no_grad, LongTensor
 import logging
 from winsound import PlaySound
+from openai import OpenAI
 
 chinese_model_path = ".\model\CN\model.pth"
 chinese_config_path = ".\model\CN\config.json"
@@ -51,11 +52,15 @@ def get_input():
 def get_input_jp():
     # prompt for input
     print("You:")
-    user_input = input() +" 使用日本语"
+    usr_in = input()
+    if usr_in == 'quit()':
+        return usr_in
+    else:
+        user_input = usr_in +" 使用日本语"
     return user_input
 
 def get_token():
-    token = input("Copy your token from ChatGPT and press Enter \n")
+    token = input("Your API Key: \n")
     return token
 
       
@@ -63,7 +68,6 @@ def get_token():
 
 
 logging.getLogger('numba').setLevel(logging.WARNING)
-
 
 def ex_print(text, escape=False):
     if escape:
@@ -102,13 +106,29 @@ def print_speakers(speakers, escape=False):
 
 def get_speaker_id(message):
     speaker_id = input(message)
-    try:
-        speaker_id = int(speaker_id)
-    except:
+    if speaker_id == '':
         print(str(speaker_id) + ' is not a valid ID!')
         sys.exit(1)
+    else:
+        try:
+            speaker_id = int(speaker_id)
+        except:
+            print(str(speaker_id) + ' is not a valid ID!')
+            sys.exit(1)
     return speaker_id
 
+def get_model_id(message):
+    model_id = input(message)
+    if model_id == '':
+        print(str(model_id) + ' is not a valid ID!')
+        sys.exit(1)
+    else:
+        try:
+            model_id = int(model_id)
+        except:
+            print(str(model_id) + ' is not a valid ID!')
+            sys.exit(1)
+    return model_id
 
 def get_label_value(text, label, default, warning_name='value'):
     value = re.search(rf'\[{label}=(.+?)\]', text)
@@ -129,7 +149,20 @@ def get_label(text, label):
         return True, text.replace(f'[{label}]', '')
     else:
         return False, text
+    
+def get_reponse(input):
+    msg = [
+        {"role": "user", "content": input}
+    ]
 
+    # Call the OpenAI API with the prompt
+    response = client.chat.completions.create(
+      model="gpt-3.5-turbo",  # Adjust based on available engine versions
+      messages=msg,
+      temperature=0
+    )
+    # Extract and return the text from the API response
+    return response.choices[0].message.content
 
 
 def generateSound(inputString, id, model_id):
@@ -194,37 +227,54 @@ def generateSound(inputString, id, model_id):
                                                noise_scale_w=noise_scale_w, length_scale=length_scale)[0][0, 0].data.cpu().float().numpy()
 
                 write(out_path, hps_ms.data.sampling_rate, audio)
-                print('Successfully saved!')
-
 if __name__ == "__main__":
-    session_token = get_token()
-    api = ChatGPT(session_token)
-    print(modelmessage)
-    model_id = int(input('选择回复语言: '))
-    if model_id == 0:
-        print("\n" + idmessage_cn)
-        id = get_speaker_id('选择角色: ')
-    elif model_id == 1:
-        print("\n" + idmessage_jp)
-        id = get_speaker_id('选择角色: ')
+    # Set OpenAI API key
+    api_key = get_token()
     print()
+    client = OpenAI(api_key=api_key, timeout=600)
+    model_id = -1
     while True:
+        print(modelmessage)
+        model_id = int(get_model_id('选择回复语言: '))
+        if model_id == 0 or model_id == 1:
+            break
+        else:
+            print(str(model_id) + ' is not a valid ID!\n')
+    print()
 
+    speaker_id = -1
+    while True:
         if model_id == 0:
-            resp = api.send_message(get_input())
-            if(resp == "quit()"):
-                break
-            answer = resp["message"].replace('\n','')
-            print("ChatGPT:")
-            print(answer)
-            generateSound("[ZH]"+answer+"[ZH]", id, model_id)
-            PlaySound(r'.\output.wav', flags=1)
+            print("\n" + idmessage_cn)
         elif model_id == 1:
-            resp = api.send_message(get_input_jp())
-            if(resp == "quit()"):
+            print("\n" + idmessage_jp)
+        
+        speaker_id = get_speaker_id('选择角色: ')
+        if (model_id == 0 and speaker_id in list(range(4))) or (model_id == 1 and speaker_id in list(range(7))):
+            break
+        else:
+            print(str(speaker_id) + ' is not a valid ID!\n')
+    print()
+
+    while True:
+        if model_id == 0:
+            usr_in = get_input()
+
+            if(usr_in == "quit()"):
                 break
-            answer = resp["message"].replace('\n','')
+            resp = get_reponse(usr_in)
             print("ChatGPT:")
+            answer = resp.replace('\n','')
+            generateSound("[ZH]"+answer+"[ZH]", speaker_id, model_id)
             print(answer)
-            generateSound(answer, id, model_id)
-            PlaySound(r'.\output.wav', flags=1)
+            PlaySound(r'./output.wav', flags=1)
+        elif model_id == 1:
+            usr_in = get_input_jp()
+            if(usr_in == "quit()"):
+                break
+            resp = get_reponse(usr_in)
+            print("ChatGPT:")
+            answer = resp.replace('\n','')
+            generateSound(answer, speaker_id, model_id)
+            print(answer)
+            PlaySound(r'./output.wav', flags=1)
